@@ -1,5 +1,8 @@
-import logging
+import logging, json
 from psycopg2.extensions import cursor
+from psycopg2 import sql
+from psycopg2.extras import execute_values
+
 from db.connection import manage_cursor
 
 logger = logging.getLogger(__name__)
@@ -59,9 +62,32 @@ def rebuild_table_schemas(cur: cursor) -> None:
     )
     """)
 
+def load_data(cur: cursor, json_file: str, table: str) -> None:
+    assert json_file.split(".")[-1] == "json", "Please enter a json file"
+    logging.debug(f"Inserting data from {json_file}")
+
+    with open(json_file) as f:
+        rows = json.load(f)
+
+    if not rows:
+        logging.warning(f"No data was loaded from {json_file}")
+        return
+
+    columns = list(rows[0].keys())
+    values = [[row[col] for col in columns] for row in rows]
+
+    query = sql.SQL("INSERT INTO {} ({}) VALUES %s").format(
+        sql.Identifier(table),
+        sql.SQL(", ").join(map(sql.Identifier, columns)),
+    )
+    execute_values(cur, query, values)
+
 def insert_test_data(cur: cursor) -> None:
-    logging.debug("Inserting Test Data")
-    raise NotImplementedError
+    data_loc = "db/data/"
+    load_data(cur, data_loc + "users.json", "users")
+    load_data(cur, data_loc + "venues.json", "venues")
+    load_data(cur, data_loc + "events.json", "events")
+    load_data(cur, data_loc + "rsvps.json", "rsvps")
 
 @manage_cursor
 def seed(cur: cursor) -> None:
